@@ -65,7 +65,209 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'posts': renderPostsPage(); break;
         }
     }
+    // Add these two new functions anywhere in your app.js file
+
+/**
+ * NEW: Handles the file selection event.
+ * @param {Event} event The file input change event.
+ */
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const csvText = e.target.result;
+        try {
+            processCSV(csvText);
+        } catch (error) {
+            alert(`Error processing CSV file: ${error.message}`);
+        }
+    };
+    reader.onerror = () => alert('Error reading file.');
+    reader.readAsText(file);
+
+    // Reset the input value to allow re-uploading the same file
+    event.target.value = '';
+}
+
+/**
+ * NEW: Parses CSV text and updates staff data.
+ * It adds new staff or updates existing staff if the name matches.
+ * @param {string} csvText The raw text content from the CSV file.
+ */
+function processCSV(csvText) {
+    const lines = csvText.trim().split(/\r?\n/);
+    const header = lines[0].toLowerCase().split(',').map(h => h.trim());
     
+    // Expected headers for mapping
+    const expectedHeaders = ['name', 'department', 'lockedshift', 'weekoffday'];
+    if (!expectedHeaders.every(h => header.includes(h))) {
+        throw new Error('Invalid CSV headers. Expected: name, department, lockedShift, weekOffDay');
+    }
+
+    const dataRows = lines.slice(1);
+    let newStaffCount = 0;
+    let updatedStaffCount = 0;
+
+    dataRows.forEach(line => {
+        if (!line.trim()) return; // Skip empty lines
+        const values = line.split(',');
+
+        const rowData = header.reduce((obj, col, index) => {
+            obj[col.replace(/\s+/g, '')] = (values[index] || '').trim();
+            return obj;
+        }, {});
+
+        // Basic validation
+        if (!rowData.name || !rowData.department) return;
+        const departmentUpper = rowData.department.toUpperCase();
+        if (departmentUpper !== 'CS' && departmentUpper !== 'RAMP') return;
+
+        const existingStaff = state.staff.find(s => s.name.toLowerCase() === rowData.name.toLowerCase());
+
+        const staffDetails = {
+            name: rowData.name,
+            department: departmentUpper,
+            lockedShift: rowData.lockedshift || null,
+            weekOffDay: rowData.weekoffday || null,
+        };
+
+        if (existingStaff) {
+            Object.assign(existingStaff, staffDetails);
+            updatedStaffCount++;
+        } else {
+            staffDetails.id = Date.now() + Math.random(); // Quick unique ID
+            state.staff.push(staffDetails);
+            newStaffCount++;
+        }
+    });
+
+    if (newStaffCount > 0 || updatedStaffCount > 0) {
+        saveState();
+        renderStaffPage();
+        alert(`Import successful!\n- ${newStaffCount} new staff added.\n- ${updatedStaffCount} staff updated.`);
+    } else {
+        alert("No valid staff data was imported. Check the CSV format and content.");
+    }
+}
+
+// --- EVENT LISTENERS ---
+// Find your setupEventListeners() function and add these new listeners inside it.
+function setupEventListeners() {
+    // ... (all your existing event listeners)
+
+    // 👇 NEW EVENT LISTENERS START
+    document.getElementById('import-csv-btn').addEventListener('click', () => {
+        document.getElementById('csv-file-input').click();
+    });
+
+    document.getElementById('csv-file-input').addEventListener('change', handleFileUpload);
+    // 👇 NEW EVENT LISTENERS END
+}// Add these two new functions anywhere in your app.js file
+
+/**
+ * NEW: Handles the file selection event.
+ * @param {Event} event The file input change event.
+ */
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const csvText = e.target.result;
+        try {
+            processCSV(csvText);
+        } catch (error) {
+            alert(`Error processing CSV file: ${error.message}`);
+        }
+    };
+    reader.onerror = () => alert('Error reading file.');
+    reader.readAsText(file);
+
+    // Reset the input value to allow re-uploading the same file
+    event.target.value = '';
+}
+
+/**
+ * NEW: Parses CSV text and updates staff data.
+ * It adds new staff or updates existing staff if the name matches.
+ * @param {string} csvText The raw text content from the CSV file.
+ */
+function processCSV(csvText) {
+    const lines = csvText.trim().split(/\r?\n/);
+    const header = lines[0].toLowerCase().split(',').map(h => h.trim());
+    
+    // Expected headers for mapping
+    const expectedHeaders = ['name', 'department', 'lockedshift', 'weekoffday'];
+    if (!expectedHeaders.every(h => header.includes(h))) {
+        throw new Error('Invalid CSV headers. Expected: name, department, lockedShift, weekOffDay');
+    }
+
+    const dataRows = lines.slice(1);
+    let newStaffCount = 0;
+    let updatedStaffCount = 0;
+
+    dataRows.forEach(line => {
+        if (!line.trim()) return; // Skip empty lines
+        const values = line.split(',');
+
+        const rowData = header.reduce((obj, col, index) => {
+            obj[col.replace(/\s+/g, '')] = (values[index] || '').trim();
+            return obj;
+        }, {});
+
+        // Basic validation
+        if (!rowData.name || !rowData.department) return;
+        const departmentUpper = rowData.department.toUpperCase();
+        if (departmentUpper !== 'CS' && departmentUpper !== 'RAMP') return;
+
+        const existingStaff = state.staff.find(s => s.name.toLowerCase() === rowData.name.toLowerCase());
+
+        const staffDetails = {
+            name: rowData.name,
+            department: departmentUpper,
+            lockedShift: rowData.lockedshift || null,
+            weekOffDay: rowData.weekoffday || null,
+        };
+
+        if (existingStaff) {
+            Object.assign(existingStaff, staffDetails);
+            updatedStaffCount++;
+        } else {
+            staffDetails.id = Date.now() + Math.random(); // Quick unique ID
+            state.staff.push(staffDetails);
+            newStaffCount++;
+        }
+    });
+
+    if (newStaffCount > 0 || updatedStaffCount > 0) {
+        saveState();
+        renderStaffPage();
+        alert(`Import successful!\n- ${newStaffCount} new staff added.\n- ${updatedStaffCount} staff updated.`);
+    } else {
+        alert("No valid staff data was imported. Check the CSV format and content.");
+    }
+}
+
+// --- EVENT LISTENERS ---
+// Find your setupEventListeners() function and add these new listeners inside it.
+function setupEventListeners() {
+    // ... (all your existing event listeners)
+
+    // 👇 NEW EVENT LISTENERS START
+    document.getElementById('import-csv-btn').addEventListener('click', () => {
+        document.getElementById('csv-file-input').click();
+    });
+
+    document.getElementById('csv-file-input').addEventListener('change', handleFileUpload);
+    // 👇 NEW EVENT LISTENERS END
+}
     // -- Allocation Page Rendering --
     function renderAllocationPage() {
         const { selectedDate } = state;
