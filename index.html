@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shift Allocation App</title>
+    <title>Shift & Post Allocation App</title>
     <style>
         /* General Styling */
         :root {
@@ -27,7 +27,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 20px auto;
             padding: 20px;
             background: var(--light-bg);
@@ -148,8 +148,13 @@
         #allocation-date-picker { margin-bottom: 20px; }
         .allocation-container {
             display: grid;
-            grid-template-columns: 250px 1fr;
+            grid-template-columns: 280px 1fr;
             gap: 20px;
+            align-items: start;
+        }
+        .unassigned-pool {
+            position: sticky;
+            top: 20px;
         }
         .unassigned-pool, .shift-card {
             background: var(--light-bg);
@@ -159,14 +164,15 @@
         }
         .shifts-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            grid-template-columns: 1fr;
             gap: 20px;
         }
         .staff-list {
-            min-height: 100px;
+            min-height: 50px;
             background-color: var(--secondary-color);
             border-radius: 4px;
             padding: 10px;
+            margin-top: 10px;
         }
         .staff-item {
             padding: 8px;
@@ -196,17 +202,29 @@
         .shift-meta { font-size: 0.9em; color: #555; }
         .staff-count { font-weight: bold; }
         .staff-count.warning { color: var(--warning-color); }
+        .post-container {
+            padding: 10px;
+            margin-top: 10px;
+            border: 1px dashed var(--border-color);
+            border-radius: 4px;
+        }
+        .post-title {
+            font-weight: bold;
+            color: #555;
+        }
+
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>Shift Allocation App</h1>
+        <h1>Shift & Post Allocation App</h1>
 
         <div class="tabs">
             <button class="tab-link active" onclick="openTab(event, 'Allocation')">📅 Shift Allocation</button>
             <button class="tab-link" onclick="openTab(event, 'Staff')">🧑‍💼 Staff Management</button>
             <button class="tab-link" onclick="openTab(event, 'Shifts')">⏰ Shift Management</button>
+            <button class="tab-link" onclick="openTab(event, 'Posts')">📍 Post Management</button>
         </div>
 
         <div id="Allocation" class="tab-content active">
@@ -218,7 +236,7 @@
             <div class="allocation-container">
                 <div class="unassigned-pool">
                     <h3>Unassigned Staff</h3>
-                    <div id="unassigned-staff-list" class="staff-list" data-shift-id="null"></div>
+                    <div id="unassigned-staff-list" class="staff-list" data-shift-id="null" data-post-id="null"></div>
                 </div>
                 <div class="shifts-grid" id="shifts-grid">
                     </div>
@@ -258,6 +276,22 @@
                 <tbody></tbody>
             </table>
         </div>
+
+        <div id="Posts" class="tab-content">
+            <h2>Customer Service Posts</h2>
+            <button class="btn btn-primary" id="add-post-btn">Add New Post</button>
+            <table id="posts-table">
+                <thead>
+                    <tr>
+                        <th>Post Name</th>
+                        <th>Parent Shift</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
     </div>
 
     <div id="form-modal" class="modal">
@@ -278,12 +312,14 @@
             const AppState = {
                 staff: JSON.parse(localStorage.getItem('staff')) || [],
                 shifts: JSON.parse(localStorage.getItem('shifts')) || [],
+                posts: JSON.parse(localStorage.getItem('posts')) || [],
                 allocations: JSON.parse(localStorage.getItem('allocations')) || [],
             };
 
             const saveData = () => {
                 localStorage.setItem('staff', JSON.stringify(AppState.staff));
                 localStorage.setItem('shifts', JSON.stringify(AppState.shifts));
+                localStorage.setItem('posts', JSON.stringify(AppState.posts));
                 localStorage.setItem('allocations', JSON.stringify(AppState.allocations));
             };
 
@@ -297,6 +333,7 @@
             
             const staffTableBody = document.querySelector('#staff-table tbody');
             const shiftsTableBody = document.querySelector('#shifts-table tbody');
+            const postsTableBody = document.querySelector('#posts-table tbody');
             
             const allocationDatePicker = document.getElementById('allocation-date-picker');
             const unassignedStaffList = document.getElementById('unassigned-staff-list');
@@ -396,15 +433,10 @@
                 openModal('Edit Staff', createStaffFormHTML(staff), (formData) => {
                     const staffIndex = AppState.staff.findIndex(s => s.id === id);
                     if (staffIndex > -1) {
-                        AppState.staff[staffIndex] = {
-                            id: id,
-                            name: formData.get('name'),
-                            department: formData.get('department'),
-                            lockedShift: formData.get('lockedShift') || null,
-                        };
+                        AppState.staff[staffIndex] = { ...AppState.staff[staffIndex], ...Object.fromEntries(formData.entries()), lockedShift: formData.get('lockedShift') || null };
                         saveData();
                         renderStaffList();
-                        renderAllocationUI(); // Re-render allocation in case locked shift changed
+                        renderAllocationUI();
                     }
                 });
             };
@@ -412,7 +444,6 @@
             window.deleteStaffHandler = (id) => {
                 if (confirm('Are you sure you want to delete this staff member?')) {
                     AppState.staff = AppState.staff.filter(s => s.id !== id);
-                    // Also remove any allocations for this staff member
                     AppState.allocations = AppState.allocations.filter(a => a.staffId !== id);
                     saveData();
                     renderStaffList();
@@ -420,26 +451,23 @@
                 }
             };
             
-            // CSV Upload
             document.getElementById('csv-upload').onchange = (event) => {
                 const file = event.target.files[0];
                 if (!file) return;
-
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const text = e.target.result;
-                    const rows = text.split('\n').slice(1); // Skip header row
+                    const rows = text.split('\n').slice(1);
                     let newStaffCount = 0;
                     rows.forEach(row => {
                         const columns = row.trim().split(',');
-                        if (columns.length >= 2 && columns[0]) { // Must have at least name and department
-                            const newStaff = {
+                        if (columns.length >= 2 && columns[0]) {
+                            AppState.staff.push({
                                 id: generateId(AppState.staff),
                                 name: columns[0].trim(),
                                 department: columns[1].trim(),
                                 lockedShift: columns[2] ? columns[2].trim() : null
-                            };
-                            AppState.staff.push(newStaff);
+                            });
                             newStaffCount++;
                         }
                     });
@@ -448,7 +476,7 @@
                     alert(`${newStaffCount} staff members imported successfully!`);
                 };
                 reader.readAsText(file);
-                event.target.value = ''; // Reset file input
+                event.target.value = '';
             };
 
             // --- SHIFT MANAGEMENT ---
@@ -484,7 +512,7 @@
                     <input type="time" name="end" id="end" value="${shift.end || ''}" required>
                 </div>
                 <div class="form-group">
-                    <label for="minStaff">Minimum Staff</label>
+                    <label for="minStaff">Minimum Staff (Overall)</label>
                     <input type="number" name="minStaff" id="minStaff" value="${shift.minStaff || 20}" required min="1">
                 </div>
                 <button type="submit" class="btn btn-primary">Save Shift</button>
@@ -492,14 +520,7 @@
 
             document.getElementById('add-shift-btn').onclick = () => {
                 openModal('Add New Shift', createShiftFormHTML(), (formData) => {
-                    const newShift = {
-                        id: generateId(AppState.shifts),
-                        name: formData.get('name'),
-                        start: formData.get('start'),
-                        end: formData.get('end'),
-                        minStaff: parseInt(formData.get('minStaff'), 10),
-                    };
-                    AppState.shifts.push(newShift);
+                    AppState.shifts.push({ id: generateId(AppState.shifts), ...Object.fromEntries(formData.entries()), minStaff: parseInt(formData.get('minStaff')) });
                     saveData();
                     renderShiftsList();
                 });
@@ -510,13 +531,7 @@
                 openModal('Edit Shift', createShiftFormHTML(shift), (formData) => {
                     const shiftIndex = AppState.shifts.findIndex(s => s.id === id);
                     if (shiftIndex > -1) {
-                        AppState.shifts[shiftIndex] = {
-                            id: id,
-                            name: formData.get('name'),
-                            start: formData.get('start'),
-                            end: formData.get('end'),
-                            minStaff: parseInt(formData.get('minStaff'), 10),
-                        };
+                        AppState.shifts[shiftIndex] = { ...AppState.shifts[shiftIndex], ...Object.fromEntries(formData.entries()), minStaff: parseInt(formData.get('minStaff')) };
                         saveData();
                         renderShiftsList();
                         renderAllocationUI();
@@ -525,12 +540,83 @@
             };
 
             window.deleteShiftHandler = (id) => {
-                if (confirm('Are you sure you want to delete this shift? This will unassign all staff from this shift.')) {
+                if (confirm('Are you sure you want to delete this shift? This will also delete all associated posts and unassign all staff.')) {
                     AppState.shifts = AppState.shifts.filter(s => s.id !== id);
-                    // Remove allocations associated with this shift
+                    AppState.posts = AppState.posts.filter(p => p.shiftId !== id);
                     AppState.allocations = AppState.allocations.filter(a => a.shiftId !== id);
                     saveData();
                     renderShiftsList();
+                    renderPostsList();
+                    renderAllocationUI();
+                }
+            };
+
+            // --- POST MANAGEMENT ---
+            const renderPostsList = () => {
+                postsTableBody.innerHTML = '';
+                const shiftMap = new Map(AppState.shifts.map(s => [s.id, s.name]));
+                AppState.posts.forEach(p => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${p.name}</td>
+                        <td>${shiftMap.get(p.shiftId) || 'N/A'}</td>
+                        <td class="actions">
+                            <button class="btn" onclick="editPostHandler(${p.id})">Edit</button>
+                            <button class="btn btn-danger" onclick="deletePostHandler(${p.id})">Delete</button>
+                        </td>
+                    `;
+                    postsTableBody.appendChild(tr);
+                });
+            };
+            
+            const createPostFormHTML = (post = {}) => {
+                const shiftOptions = AppState.shifts.map(shift =>
+                    `<option value="${shift.id}" ${post.shiftId == shift.id ? 'selected' : ''}>${shift.name}</option>`
+                ).join('');
+                return `
+                    <input type="hidden" name="id" value="${post.id || ''}">
+                    <div class="form-group">
+                        <label for="name">Post Name</label>
+                        <input type="text" name="name" id="name" value="${post.name || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="shiftId">Parent Shift</label>
+                        <select name="shiftId" id="shiftId" required>
+                            <option value="">Select a shift</option>
+                            ${shiftOptions}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Post</button>
+                `;
+            };
+
+            document.getElementById('add-post-btn').onclick = () => {
+                openModal('Add New Post', createPostFormHTML(), (formData) => {
+                    AppState.posts.push({ id: generateId(AppState.posts), name: formData.get('name'), shiftId: parseInt(formData.get('shiftId')) });
+                    saveData();
+                    renderPostsList();
+                });
+            };
+
+            window.editPostHandler = (id) => {
+                const post = AppState.posts.find(p => p.id === id);
+                openModal('Edit Post', createPostFormHTML(post), (formData) => {
+                    const postIndex = AppState.posts.findIndex(p => p.id === id);
+                    if (postIndex > -1) {
+                        AppState.posts[postIndex] = { ...AppState.posts[postIndex], name: formData.get('name'), shiftId: parseInt(formData.get('shiftId')) };
+                        saveData();
+                        renderPostsList();
+                        renderAllocationUI();
+                    }
+                });
+            };
+
+            window.deletePostHandler = (id) => {
+                if (confirm('Are you sure you want to delete this post? This will unassign all staff from this post.')) {
+                    AppState.posts = AppState.posts.filter(p => p.id !== id);
+                    AppState.allocations = AppState.allocations.filter(a => a.postId !== id);
+                    saveData();
+                    renderPostsList();
                     renderAllocationUI();
                 }
             };
@@ -544,10 +630,25 @@
                 shiftsGrid.innerHTML = '';
 
                 const allocationsForDate = AppState.allocations.filter(a => a.date === selectedDate);
-                const assignedStaffIds = new Set(allocationsForDate.map(a => a.staffId));
                 
-                // Populate Shift Cards
+                // Populate Shift Cards and their Posts
                 AppState.shifts.forEach(shift => {
+                    const postsForShift = AppState.posts.filter(p => p.shiftId === shift.id);
+                    let postsHTML = '';
+
+                    postsForShift.forEach(post => {
+                        postsHTML += `
+                            <div class="post-container">
+                                <div class="post-title">${post.name}</div>
+                                <div class="staff-list" data-shift-id="${shift.id}" data-post-id="${post.id}"></div>
+                            </div>
+                        `;
+                    });
+
+                    if(postsHTML === '') {
+                        postsHTML = `<p style="font-size:0.9em; color:#777; text-align:center; margin-top: 20px;">No posts defined for this shift.</p>`;
+                    }
+
                     const shiftCard = document.createElement('div');
                     shiftCard.className = 'shift-card';
                     shiftCard.innerHTML = `
@@ -555,43 +656,41 @@
                             <h3>${shift.name}</h3>
                             <div class="shift-meta">
                                 <span>${shift.start} - ${shift.end}</span> | 
-                                <span>Min: <span class="min-staff-req">${shift.minStaff}</span></span> |
-                                <span>Assigned: <span class="staff-count">0</span></span>
+                                <span>Min. Total: <span class="min-staff-req">${shift.minStaff}</span></span> |
+                                <span>Assigned Total: <span class="staff-count">0</span></span>
                             </div>
                         </div>
-                        <div class="staff-list" data-shift-id="${shift.id}"></div>
+                        <div class="posts-wrapper">${postsHTML}</div>
                     `;
                     shiftsGrid.appendChild(shiftCard);
                 });
 
-                // Populate Staff
+                // Populate Staff into Unassigned or their assigned Post
                 AppState.staff.forEach(staff => {
-                    const staffAllocation = allocationsForDate.find(a => a.staffId === staff.id);
+                    const allocation = allocationsForDate.find(a => a.staffId === staff.id);
                     const isLocked = !!staff.lockedShift;
-                    let targetShiftId = staffAllocation ? staffAllocation.shiftId : null;
 
-                    // Auto-assign locked staff if they are not manually assigned elsewhere
-                    if (isLocked && !staffAllocation) {
-                        const lockedShift = AppState.shifts.find(s => s.name === staff.lockedShift);
-                        if(lockedShift) {
-                            targetShiftId = lockedShift.id;
-                            // Add allocation for locked staff if it doesn't exist for the day
-                            AppState.allocations.push({ staffId: staff.id, shiftId: targetShiftId, date: selectedDate });
-                            saveData(); // Save the automatic allocation
-                        }
-                    }
-
-                    const staffItem = createStaffItem(staff, isLocked);
+                    const staffItem = document.createElement('div');
+                    staffItem.className = 'staff-item';
+                    staffItem.dataset.staffId = staff.id;
+                    staffItem.draggable = !isLocked;
+                    if (isLocked) staffItem.classList.add('locked');
+                    staffItem.innerHTML = `<span>${staff.name}</span><small>${staff.department}</small>`;
 
                     let targetList;
-                    if (targetShiftId) {
-                        targetList = shiftsGrid.querySelector(`.staff-list[data-shift-id="${targetShiftId}"]`);
+                    if (allocation) {
+                        targetList = shiftsGrid.querySelector(`.staff-list[data-post-id="${allocation.postId}"]`);
+                    } else if (isLocked) {
+                        // Locked staff logic needs to find a default post if unassigned, not implemented here for simplicity. They'll go to unassigned.
+                        targetList = unassignedStaffList;
                     } else {
                         targetList = unassignedStaffList;
                     }
-                    
+
                     if (targetList) {
                         targetList.appendChild(staffItem);
+                    } else { // Fallback if post was deleted but allocation remains
+                        unassignedStaffList.appendChild(staffItem);
                     }
                 });
                 
@@ -599,26 +698,11 @@
                 validateAllShiftCounts();
             };
             
-            const createStaffItem = (staff, isLocked) => {
-                const item = document.createElement('div');
-                item.className = 'staff-item';
-                item.dataset.staffId = staff.id;
-                item.draggable = !isLocked;
-                if (isLocked) item.classList.add('locked');
-                item.innerHTML = `
-                    <span>${staff.name}</span>
-                    <small>${staff.department}</small>
-                `;
-                return item;
-            };
-
             const validateAllShiftCounts = () => {
                 document.querySelectorAll('.shift-card').forEach(card => {
-                    const list = card.querySelector('.staff-list');
-                    const countEl = card.querySelector('.staff-count');
+                    const assignedCount = card.querySelectorAll('.staff-item').length;
                     const minStaff = parseInt(card.querySelector('.min-staff-req').textContent, 10);
-                    const assignedCount = list.children.length;
-                    
+                    const countEl = card.querySelector('.staff-count');
                     countEl.textContent = assignedCount;
                     countEl.classList.toggle('warning', assignedCount < minStaff);
                 });
@@ -643,34 +727,27 @@
                 });
                 
                 dropZones.forEach(zone => {
-                    zone.addEventListener('dragover', e => {
-                        e.preventDefault(); // Necessary to allow drop
-                    });
+                    zone.addEventListener('dragover', e => e.preventDefault());
 
                     zone.addEventListener('drop', (e) => {
                         e.preventDefault();
                         if (draggedItem && e.currentTarget.classList.contains('staff-list')) {
                             const selectedDate = allocationDatePicker.value;
                             const staffId = parseInt(draggedItem.dataset.staffId, 10);
-                            const newShiftId = e.currentTarget.dataset.shiftId === 'null' ? null : parseInt(e.currentTarget.dataset.shiftId, 10);
-
-                            // Update state
+                            const newShiftId = e.currentTarget.dataset.shiftId === 'null' ? null : parseInt(e.currentTarget.dataset.shiftId);
+                            const newPostId = e.currentTarget.dataset.postId === 'null' ? null : parseInt(e.currentTarget.dataset.postId);
+                            
                             const allocationIndex = AppState.allocations.findIndex(a => a.date === selectedDate && a.staffId === staffId);
                             
-                            if (newShiftId === null) { // Dropped into unassigned
-                                if (allocationIndex > -1) {
-                                    AppState.allocations.splice(allocationIndex, 1);
-                                }
-                            } else { // Dropped into a shift
-                                if (allocationIndex > -1) {
-                                    AppState.allocations[allocationIndex].shiftId = newShiftId;
-                                } else {
-                                    AppState.allocations.push({ staffId, shiftId: newShiftId, date: selectedDate });
-                                }
+                            if (newPostId === null) { // Dropped to Unassigned
+                                if (allocationIndex > -1) AppState.allocations.splice(allocationIndex, 1);
+                            } else { // Dropped to a Post
+                                const newAllocation = { staffId, shiftId: newShiftId, postId: newPostId, date: selectedDate };
+                                if (allocationIndex > -1) AppState.allocations[allocationIndex] = newAllocation;
+                                else AppState.allocations.push(newAllocation);
                             }
                             
                             saveData();
-                            // UI update (more efficient than full re-render)
                             e.currentTarget.appendChild(draggedItem);
                             validateAllShiftCounts();
                         }
@@ -688,6 +765,7 @@
             const initializeApp = () => {
                 renderStaffList();
                 renderShiftsList();
+                renderPostsList();
                 renderAllocationUI();
             };
 
