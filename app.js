@@ -428,9 +428,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // --- AUTOMATED & HELPER TOOLS ---
-    function autoAssign() {
+function autoAssign() {
+        console.log("Auto-assign function started!"); // Add this line
         const { selectedDate } = state;
         const dayName = getDayName(selectedDate);
+        // ... rest of the function
 
         // 1. Get available staff
         const offStaffIds = new Set([
