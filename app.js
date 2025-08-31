@@ -362,15 +362,9 @@ document.addEventListener('DOMContentLoaded', () => {
         dropzones.forEach(zone => {
             zone.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                const staff = getById('staff', draggedStaffId);
-                const postName = getById('posts', zone.dataset.postId)?.name;
-                
-                // Rule: RAMP can only go to Flight Manager
-                if (staff.department === 'RAMP' && postName !== 'Flight Manager') {
-                    zone.classList.add('invalid-drop');
-                } else {
-                    zone.classList.add('drag-over');
-                }
+                // 👇 MODIFICATION: Rule check removed for visual feedback.
+                // Any drop is now visually accepted.
+                zone.classList.add('drag-over');
             });
             zone.addEventListener('dragleave', (e) => {
                 zone.classList.remove('drag-over', 'invalid-drop');
@@ -385,13 +379,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(zone.dataset.postId) {
                     const postId = parseInt(zone.dataset.postId);
                     const shiftId = parseInt(zone.dataset.shiftId);
-                    const post = getById('posts', postId);
 
-                    // Re-validate on drop
-                    if (staff.department === 'RAMP' && post.name !== 'Flight Manager') {
-                        alert('RAMP department staff can only be assigned to the "Flight Manager" post.');
-                        return;
-                    }
+                    // 👇 MODIFICATION: Rule validation on drop is REMOVED.
+                    // Any staff member can be manually dropped into any post.
                     
                     // Check if post is already filled
                     if (zone.querySelector('.staff-card')) {
@@ -408,7 +398,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     }
-
     // --- ALLOCATION LOGIC ---
     function updateAllocation(staffId, shiftId, postId, date) {
         // Remove any existing allocation for this staff on this day
