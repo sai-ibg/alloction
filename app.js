@@ -16,7 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (savedState) {
             state = JSON.parse(savedState);
         } else {
-            // Seed with default data if local storage is empty
             seedDefaultData();
             saveState();
         }
@@ -26,14 +25,10 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem(DB_NAME, JSON.stringify(state));
     }
 
-    /**
-     * Initializes the state with empty arrays, removing all test data.
-     */
     function seedDefaultData() {
         state.staff = [];
         state.shifts = [];
         state.posts = [];
-        // allocations and daysOff are already initialized as empty
     }
 
 
@@ -41,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const getById = (collection, id) => state[collection].find(item => item.id === parseInt(id));
     const getDayName = (dateString) => {
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        const date = new Date(dateString + 'T00:00:00'); // Prevent timezone issues
+        const date = new Date(dateString + 'T00:00:00');
         return days[date.getDay()];
     };
 
@@ -56,7 +51,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // -- Allocation Page Rendering --
     function renderAllocationPage() {
         const { selectedDate } = state;
         const shiftsContainer = document.getElementById('shifts-container');
@@ -70,11 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const dayName = getDayName(selectedDate);
         const allocationsForDate = state.allocations.filter(a => a.date === selectedDate);
         const dayOffsForDate = state.daysOff.filter(d => d.date === selectedDate);
-
         const allocatedStaffIds = new Set(allocationsForDate.map(a => a.staffId));
         const offStaffIds = new Set(dayOffsForDate.map(d => d.staffId));
 
-        // Populate Unassigned and Off lists
         state.staff.forEach(staff => {
             const isWeekOff = staff.weekOffDay === dayName;
             const isDayOff = offStaffIds.has(staff.id);
@@ -87,17 +79,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Populate Shifts and Posts
         state.shifts.forEach(shift => {
             const shiftElement = document.createElement('div');
             shiftElement.className = 'shift';
-            
             const staffInShift = allocationsForDate.filter(a => a.shiftId === shift.id).length;
             const minStaffWarning = staffInShift < shift.minStaff ? 'warning' : '';
 
+            // MODIFIED: Display shift by time only
             shiftElement.innerHTML = `
                 <div class="shift-header ${minStaffWarning}">
-                    <span>${shift.name} (${shift.start} - ${shift.end})</span>
+                    <span>Shift: ${shift.start} - ${shift.end}</span>
                     <span>Staff: ${staffInShift} / ${shift.minStaff}</span>
                 </div>
                 <div class="posts-grid"></div>
@@ -136,10 +127,19 @@ document.addEventListener('DOMContentLoaded', () => {
             card.draggable = true;
         }
         
+        // MODIFIED: Display locked shift time instead of name
+        let lockedShiftText = '';
+        if (staff.lockedShiftId) {
+            const lockedShift = getById('shifts', staff.lockedShiftId);
+            if (lockedShift) {
+                lockedShiftText = `<small>🔒 ${lockedShift.start} - ${lockedShift.end}</small>`;
+            }
+        }
+
         card.innerHTML = `
             <div>
                 <div class="staff-card-name">${staff.name}</div>
-                ${staff.lockedShift ? `<small>🔒 ${staff.lockedShift}</small>` : ''}
+                ${lockedShiftText}
             </div>
             <span class="staff-card-dept">${staff.department}</span>
         `;
@@ -168,29 +168,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // -- Management Page Renderers --
     function renderStaffPage() {
         const container = document.getElementById('staff-list-container');
-        container.innerHTML = state.staff.map(staff => `
+        container.innerHTML = state.staff.map(staff => {
+            // MODIFIED: Find and display locked shift time
+            let lockedShiftDisplay = 'None';
+            if(staff.lockedShiftId) {
+                const shift = getById('shifts', staff.lockedShiftId);
+                if(shift) lockedShiftDisplay = `${shift.start} - ${shift.end}`;
+            }
+
+            return `
             <div class="list-item">
                 <div class="list-item-details">
                     <strong>${staff.name}</strong>
                     <span>Dept: ${staff.department}</span>
                     <span>Off Day: ${staff.weekOffDay || 'None'}</span>
-                    <span>Locked Shift: ${staff.lockedShift || 'None'}</span>
+                    <span>Locked Shift: ${lockedShiftDisplay}</span>
                 </div>
                 <div class="list-item-actions">
                     <button class="btn btn-edit" data-id="${staff.id}">Edit</button>
                     <button class="btn btn-danger" data-id="${staff.id}">Delete</button>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
     }
 
     function renderShiftsPage() {
         const container = document.getElementById('shift-list-container');
+        // MODIFIED: Display shift by time only
         container.innerHTML = state.shifts.map(shift => `
             <div class="list-item">
                 <div class="list-item-details">
-                    <strong>${shift.name}</strong>
-                    <span>Time: ${shift.start} - ${shift.end}</span>
+                    <strong>${shift.start} - ${shift.end}</strong>
                     <span>Min Staff: ${shift.minStaff}</span>
                 </div>
                 <div class="list-item-actions">
@@ -205,11 +213,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('post-list-container');
         container.innerHTML = state.posts.map(post => {
             const shift = getById('shifts', post.shiftId);
+            // MODIFIED: Display parent shift time
+            const shiftDisplay = shift ? `${shift.start} - ${shift.end}` : 'N/A';
             return `
             <div class="list-item">
                 <div class="list-item-details">
                     <strong>${post.name}</strong>
-                    <span>Shift: ${shift ? shift.name : 'N/A'}</span>
+                    <span>Shift: ${shiftDisplay}</span>
                 </div>
                 <div class="list-item-actions">
                     <button class="btn btn-edit" data-id="${post.id}">Edit</button>
@@ -241,15 +251,16 @@ document.addEventListener('DOMContentLoaded', () => {
         
         switch (type) {
             case 'Staff':
-                item = isEdit ? getById('staff', id) : { name: '', department: 'CS', lockedShift: '', weekOffDay: '' };
+                // MODIFIED: Use lockedShiftId instead of lockedShift name
+                item = isEdit ? getById('staff', id) : { name: '', department: 'CS', lockedShiftId: null, weekOffDay: '' };
                 title = isEdit ? 'Edit Staff' : 'Add Staff';
-                const shiftOptions = state.shifts.map(s => `<option value="${s.name}" ${item.lockedShift === s.name ? 'selected' : ''}>${s.name}</option>`).join('');
+                const shiftOptions = state.shifts.map(s => `<option value="${s.id}" ${item.lockedShiftId === s.id ? 'selected' : ''}>${s.start} - ${s.end}</option>`).join('');
                 const dayOptions = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(d => `<option value="${d}" ${item.weekOffDay === d ? 'selected' : ''}>${d}</option>`).join('');
                 formHtml = `
                     <input type="hidden" name="id" value="${item.id || ''}">
                     <div class="form-group"><label>Name:</label><input type="text" name="name" value="${item.name}" required></div>
                     <div class="form-group"><label>Department:</label><select name="department"><option value="CS" ${item.department === 'CS' ? 'selected':''}>CS</option><option value="RAMP" ${item.department === 'RAMP' ? 'selected':''}>RAMP</option></select></div>
-                    <div class="form-group"><label>Locked Shift (Optional):</label><select name="lockedShift"><option value="">None</option>${shiftOptions}</select></div>
+                    <div class="form-group"><label>Locked Shift (Optional):</label><select name="lockedShiftId"><option value="">None</option>${shiftOptions}</select></div>
                     <div class="form-group"><label>Weekly Off (Optional):</label><select name="weekOffDay"><option value="">None</option>${dayOptions}</select></div>
                     <button type="submit" class="btn btn-primary">${isEdit ? 'Update' : 'Add'}</button>
                 `;
@@ -257,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = {
                         name: formData.get('name'),
                         department: formData.get('department'),
-                        lockedShift: formData.get('lockedShift') || null,
+                        lockedShiftId: formData.get('lockedShiftId') ? parseInt(formData.get('lockedShiftId')) : null,
                         weekOffDay: formData.get('weekOffDay') || null
                     };
                     if (isEdit) {
@@ -270,13 +281,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderStaffPage();
                 };
                 break;
-            // Add cases for Shift and Post
+            
             case 'Shift':
-                item = isEdit ? getById('shifts', id) : { name: '', start: '09:00', end: '17:00', minStaff: 20 };
+                // MODIFIED: Removed 'name' field from Shift form
+                item = isEdit ? getById('shifts', id) : { start: '09:00', end: '17:00', minStaff: 20 };
                 title = isEdit ? 'Edit Shift' : 'Add Shift';
                 formHtml = `
                     <input type="hidden" name="id" value="${item.id || ''}">
-                    <div class="form-group"><label>Name:</label><input type="text" name="name" value="${item.name}" required></div>
                     <div class="form-group"><label>Start Time:</label><input type="time" name="start" value="${item.start}" required></div>
                     <div class="form-group"><label>End Time:</label><input type="time" name="end" value="${item.end}" required></div>
                     <div class="form-group"><label>Min. Staff:</label><input type="number" name="minStaff" value="${item.minStaff}" required></div>
@@ -284,7 +295,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 submitHandler = (formData) => {
                     const data = {
-                        name: formData.get('name'),
                         start: formData.get('start'),
                         end: formData.get('end'),
                         minStaff: parseInt(formData.get('minStaff'))
@@ -302,7 +312,8 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'Post':
                 item = isEdit ? getById('posts', id) : { name: '', shiftId: '' };
                 title = isEdit ? 'Edit Post' : 'Add Post';
-                const postShiftOptions = state.shifts.map(s => `<option value="${s.id}" ${item.shiftId === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
+                // MODIFIED: Display shift times in post form dropdown
+                const postShiftOptions = state.shifts.map(s => `<option value="${s.id}" ${item.shiftId === s.id ? 'selected' : ''}>${s.start} - ${s.end}</option>`).join('');
                 formHtml = `
                     <input type="hidden" name="id" value="${item.id || ''}">
                     <div class="form-group"><label>Name:</label><input type="text" name="name" value="${item.name}" required></div>
@@ -330,13 +341,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleDelete(type, id) {
         if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
-        const collection = type.toLowerCase() + 's';
-        state[collection] = state[collection].filter(item => item.id !== id);
-        // Also remove related data (e.g., allocations for a deleted staff)
-        if (type === 'Staff') {
-            state.allocations = state.allocations.filter(a => a.staffId !== id);
-        }
-        // Add similar cleanup for shifts and posts if needed
+        const collectionName = type.toLowerCase() + 's';
+        state[collectionName] = state[collectionName].filter(item => item.id !== parseInt(id));
         saveState();
         renderAll();
     }
@@ -362,47 +368,32 @@ document.addEventListener('DOMContentLoaded', () => {
         dropzones.forEach(zone => {
             zone.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                // 👇 MODIFICATION: Rule check removed for visual feedback.
-                // Any drop is now visually accepted.
                 zone.classList.add('drag-over');
             });
             zone.addEventListener('dragleave', (e) => {
-                zone.classList.remove('drag-over', 'invalid-drop');
+                zone.classList.remove('drag-over');
             });
             zone.addEventListener('drop', (e) => {
                 e.preventDefault();
-                zone.classList.remove('drag-over', 'invalid-drop');
+                zone.classList.remove('drag-over');
                 const staffId = parseInt(draggedStaffId);
-                const staff = getById('staff', staffId);
-
-                // If dropping into a post
-                if(zone.dataset.postId) {
+                if (zone.dataset.postId) {
                     const postId = parseInt(zone.dataset.postId);
                     const shiftId = parseInt(zone.dataset.shiftId);
-
-                    // 👇 MODIFICATION: Rule validation on drop is REMOVED.
-                    // Any staff member can be manually dropped into any post.
-                    
-                    // Check if post is already filled
                     if (zone.querySelector('.staff-card')) {
-                        alert('This post is already filled.');
                         return;
                     }
-
                     updateAllocation(staffId, shiftId, postId, state.selectedDate);
-                }
-                // If dropping back to unassigned list
-                else if (zone.id === 'unassigned-staff-list') {
+                } else if (zone.id === 'unassigned-staff-list') {
                     removeAllocation(staffId, state.selectedDate);
                 }
             });
         });
     }
+
     // --- ALLOCATION LOGIC ---
     function updateAllocation(staffId, shiftId, postId, date) {
-        // Remove any existing allocation for this staff on this day
         state.allocations = state.allocations.filter(a => !(a.staffId === staffId && a.date === date));
-        // Add new allocation
         state.allocations.push({ staffId, shiftId, postId, date });
         saveState();
         renderAllocationPage();
@@ -419,7 +410,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (index > -1) {
             state.daysOff.splice(index, 1);
         } else {
-            // Remove from allocation if they were assigned
             removeAllocation(staffId, date);
             state.daysOff.push({ staffId, date });
         }
@@ -428,48 +418,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // --- AUTOMATED & HELPER TOOLS ---
-function autoAssign() {
-        console.log("Auto-assign function started!"); // Add this line
+    function autoAssign() {
         const { selectedDate } = state;
         const dayName = getDayName(selectedDate);
-        // ... rest of the function
 
-        // 1. Get available staff
         const offStaffIds = new Set([
             ...state.daysOff.filter(d => d.date === selectedDate).map(d => d.staffId),
             ...state.staff.filter(s => s.weekOffDay === dayName).map(s => s.id)
         ]);
 
         let availableStaff = state.staff.filter(s => !offStaffIds.has(s.id));
-        
-        // 2. Clear current allocations for the day
         state.allocations = state.allocations.filter(a => a.date !== selectedDate);
-
-        // 3. Get all available posts
         let availablePosts = [...state.posts];
         
-        // 4. Handle locked shifts first
-        const lockedStaff = availableStaff.filter(s => s.lockedShift);
+        // MODIFIED: Use lockedShiftId to find the correct shift
+        const lockedStaff = availableStaff.filter(s => s.lockedShiftId);
         lockedStaff.forEach(staff => {
-            const lockedShift = state.shifts.find(s => s.name === staff.lockedShift);
+            const lockedShift = getById('shifts', staff.lockedShiftId);
             if (!lockedShift) return;
             
             let postsInShift = availablePosts.filter(p => p.shiftId === lockedShift.id);
-            // Find a valid post (respecting RAMP rule)
             let targetPost = postsInShift.find(p => !(staff.department === 'RAMP' && p.name !== 'Flight Manager'));
             
             if (targetPost) {
                 updateAllocation(staff.id, lockedShift.id, targetPost.id, selectedDate);
-                // Remove staff and post from pools
                 availableStaff = availableStaff.filter(s => s.id !== staff.id);
                 availablePosts = availablePosts.filter(p => p.id !== targetPost.id);
             }
         });
 
-        // 5. Shuffle remaining staff for randomness
         availableStaff.sort(() => Math.random() - 0.5);
 
-        // 6. Fulfill minimums first
         state.shifts.forEach(shift => {
             const staffInShift = state.allocations.filter(a => a.date === selectedDate && a.shiftId === shift.id).length;
             let needed = shift.minStaff - staffInShift;
@@ -481,7 +460,6 @@ function autoAssign() {
             for (let i = 0; i < needed; i++) {
                 if (availableStaff.length === 0 || postsInShift.length === 0) break;
                 
-                // Find a compatible staff/post pair
                 let assignmentMade = false;
                 for (let staffIndex = 0; staffIndex < availableStaff.length; staffIndex++) {
                     const staff = availableStaff[staffIndex];
@@ -493,15 +471,14 @@ function autoAssign() {
                         availableStaff.splice(staffIndex, 1);
                         postsInShift.splice(targetPostIndex, 1);
                         assignmentMade = true;
-                        break; // Move to next assignment
+                        break;
                     }
                 }
-                if (!assignmentMade) break; // Couldn't find a valid pair
+                if (!assignmentMade) break;
             }
-             availablePosts = availablePosts.filter(p => !postsInShift.find(removed => removed.id === p.id));
+            availablePosts = availablePosts.filter(p => !postsInShift.find(removed => removed.id === p.id));
         });
 
-        // 7. Assign remaining staff to remaining posts
         availableStaff.forEach(staff => {
             const validPostIndex = availablePosts.findIndex(p => !(staff.department === 'RAMP' && p.name !== 'Flight Manager'));
             if(validPostIndex > -1) {
@@ -519,11 +496,10 @@ function autoAssign() {
         const swapModal = document.getElementById('swap-modal');
         const emp1Select = document.getElementById('swap-emp1');
         const emp2Select = document.getElementById('swap-emp2');
-        
         const allocatedStaff = state.allocations
             .filter(a => a.date === state.selectedDate)
             .map(a => getById('staff', a.staffId))
-            .filter(Boolean); // Filter out any nulls if staff was deleted
+            .filter(Boolean); 
         
         if (allocatedStaff.length < 2) {
             alert("You need at least two allocated employees to perform a swap.");
@@ -533,7 +509,6 @@ function autoAssign() {
         const options = allocatedStaff.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
         emp1Select.innerHTML = options;
         emp2Select.innerHTML = options;
-        
         swapModal.style.display = 'block';
     }
 
@@ -541,34 +516,11 @@ function autoAssign() {
         e.preventDefault();
         const emp1Id = parseInt(document.getElementById('swap-emp1').value);
         const emp2Id = parseInt(document.getElementById('swap-emp2').value);
-
-        if (emp1Id === emp2Id) {
-            alert("Please select two different employees.");
-            return;
-        }
+        if (emp1Id === emp2Id) return;
 
         const alloc1 = state.allocations.find(a => a.date === state.selectedDate && a.staffId === emp1Id);
         const alloc2 = state.allocations.find(a => a.date === state.selectedDate && a.staffId === emp2Id);
         
-        const staff1 = getById('staff', emp1Id);
-        const staff2 = getById('staff', emp2Id);
-        const post1 = getById('posts', alloc1.postId);
-        const post2 = getById('posts', alloc2.postId);
-
-        // Validate swap
-        const isSwap1Valid = !(staff1.department === 'RAMP' && post2.name !== 'Flight Manager');
-        const isSwap2Valid = !(staff2.department === 'RAMP' && post1.name !== 'Flight Manager');
-        
-        if (!isSwap1Valid) {
-            alert(`${staff1.name} (RAMP) cannot be swapped into the "${post2.name}" post.`);
-            return;
-        }
-        if (!isSwap2Valid) {
-            alert(`${staff2.name} (RAMP) cannot be swapped into the "${post1.name}" post.`);
-            return;
-        }
-
-        // Perform swap
         const tempShiftId = alloc1.shiftId;
         const tempPostId = alloc1.postId;
         alloc1.shiftId = alloc2.shiftId;
@@ -581,80 +533,52 @@ function autoAssign() {
         renderAllocationPage();
     }
 
-
-    /**
-     * NEW: Handles the file selection event.
-     * @param {Event} event The file input change event.
-     */
     function handleFileUpload(event) {
         const file = event.target.files[0];
-        if (!file) {
-            return;
-        }
+        if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = function(e) {
-            const csvText = e.target.result;
-            try {
-                processCSV(csvText);
-            } catch (error) {
-                alert(`Error processing CSV file: ${error.message}`);
-            }
-        };
-        reader.onerror = () => alert('Error reading file.');
+        reader.onload = (e) => processCSV(e.target.result);
         reader.readAsText(file);
-
-        // Reset the input value to allow re-uploading the same file
         event.target.value = '';
     }
 
-    /**
-     * NEW: Parses CSV text and updates staff data.
-     * It adds new staff or updates existing staff if the name matches.
-     * @param {string} csvText The raw text content from the CSV file.
-     */
+    // MODIFIED: Updated CSV processing logic for lockedShiftId
     function processCSV(csvText) {
-        const lines = csvText.trim().split(/\r?\n/);
-        const header = lines[0].toLowerCase().split(',').map(h => h.trim());
-        
-        // Expected headers for mapping
-        const expectedHeaders = ['name', 'department', 'lockedshift', 'weekoffday'];
-        if (!expectedHeaders.every(h => header.includes(h))) {
-            throw new Error('Invalid CSV headers. Expected: name, department, lockedShift, weekOffDay');
-        }
-
-        const dataRows = lines.slice(1);
+        const lines = csvText.trim().split(/\r?\n/).slice(1); // Skip header
         let newStaffCount = 0;
         let updatedStaffCount = 0;
 
-        dataRows.forEach(line => {
-            if (!line.trim()) return; // Skip empty lines
-            const values = line.split(',');
+        lines.forEach(line => {
+            if (!line.trim()) return;
+            const [name, department, lockedShiftTime, weekOffDay] = line.split(',').map(field => field.trim());
 
-            const rowData = header.reduce((obj, col, index) => {
-                obj[col.replace(/\s+/g, '')] = (values[index] || '').trim();
-                return obj;
-            }, {});
-
-            // Basic validation
-            if (!rowData.name || !rowData.department) return;
-            const departmentUpper = rowData.department.toUpperCase();
+            if (!name || !department) return;
+            const departmentUpper = department.toUpperCase();
             if (departmentUpper !== 'CS' && departmentUpper !== 'RAMP') return;
 
-            const existingStaff = state.staff.find(s => s.name.toLowerCase() === rowData.name.toLowerCase());
+            let lockedShiftId = null;
+            if (lockedShiftTime) {
+                const times = lockedShiftTime.split('-');
+                if (times.length === 2) {
+                    const foundShift = state.shifts.find(s => s.start === times[0].trim() && s.end === times[1].trim());
+                    if (foundShift) lockedShiftId = foundShift.id;
+                }
+            }
 
+            const existingStaff = state.staff.find(s => s.name.toLowerCase() === name.toLowerCase());
             const staffDetails = {
-                name: rowData.name,
+                name,
                 department: departmentUpper,
-                lockedShift: rowData.lockedshift || null,
-                weekOffDay: rowData.weekoffday || null,
+                lockedShiftId,
+                weekOffDay: weekOffDay || null,
             };
 
             if (existingStaff) {
                 Object.assign(existingStaff, staffDetails);
                 updatedStaffCount++;
             } else {
-                staffDetails.id = Date.now() + Math.random(); // Quick unique ID
+                staffDetails.id = Date.now() + Math.random();
                 state.staff.push(staffDetails);
                 newStaffCount++;
             }
@@ -665,14 +589,12 @@ function autoAssign() {
             renderStaffPage();
             alert(`Import successful!\n- ${newStaffCount} new staff added.\n- ${updatedStaffCount} staff updated.`);
         } else {
-            alert("No valid staff data was imported. Check the CSV format and content.");
+            alert("No valid staff data was imported.");
         }
     }
 
-
     // --- EVENT LISTENERS ---
     function setupEventListeners() {
-        // Tab navigation
         document.querySelector('.tabs').addEventListener('click', (e) => {
             if (e.target.classList.contains('tab-link')) {
                 document.querySelectorAll('.tab-link').forEach(tab => tab.classList.remove('active'));
@@ -683,21 +605,17 @@ function autoAssign() {
             }
         });
         
-        // Date picker
         const datePicker = document.getElementById('date-picker');
         datePicker.value = state.selectedDate;
         datePicker.addEventListener('change', (e) => {
             state.selectedDate = e.target.value;
-            // No need to save state for just a date change
             renderAllocationPage();
         });
 
-        // Add buttons
         document.getElementById('add-staff-btn').addEventListener('click', () => handleAddEdit('Staff'));
         document.getElementById('add-shift-btn').addEventListener('click', () => handleAddEdit('Shift'));
         document.getElementById('add-post-btn').addEventListener('click', () => handleAddEdit('Post'));
 
-        // Edit/Delete buttons (using event delegation)
         document.getElementById('staff-list-container').addEventListener('click', e => handleListActions(e, 'Staff'));
         document.getElementById('shift-list-container').addEventListener('click', e => handleListActions(e, 'Shift'));
         document.getElementById('post-list-container').addEventListener('click', e => handleListActions(e, 'Post'));
@@ -708,21 +626,15 @@ function autoAssign() {
             if (e.target.classList.contains('btn-danger')) handleDelete(type, id);
         }
         
-        // Modal close buttons
         document.querySelectorAll('.modal .close-btn').forEach(btn => btn.onclick = closeAllModals);
         window.onclick = (e) => {
             if (e.target.classList.contains('modal')) closeAllModals();
         }
 
-        // Tool buttons
         document.getElementById('auto-assign-btn').addEventListener('click', autoAssign);
         document.getElementById('swap-shifts-btn').addEventListener('click', openSwapModal);
         document.getElementById('swap-form').addEventListener('submit', handleSwap);
-
-        // CSV Import listeners
-        document.getElementById('import-csv-btn').addEventListener('click', () => {
-            document.getElementById('csv-file-input').click();
-        });
+        document.getElementById('import-csv-btn').addEventListener('click', () => document.getElementById('csv-file-input').click());
         document.getElementById('csv-file-input').addEventListener('change', handleFileUpload);
     }
     
@@ -734,7 +646,7 @@ function autoAssign() {
     function init() {
         loadState();
         setupEventListeners();
-        renderAllocationPage(); // Initial render
+        renderAllocationPage();
     }
 
     init();
