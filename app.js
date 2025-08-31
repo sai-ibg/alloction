@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem(DB_NAME, JSON.stringify(state));
     }
 
-    function seedDefaultData() {
+function seedDefaultData() {
         state.staff = [
             { id: 1, name: 'John Doe', department: 'CS', lockedShift: null, weekOffDay: 'Sunday' },
             { id: 2, name: 'Jane Smith', department: 'CS', lockedShift: null, weekOffDay: 'Monday' },
@@ -39,12 +39,23 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 2, name: 'Evening Shift', start: '14:00', end: '22:00', minStaff: 1 },
             { id: 3, name: 'Night Shift', start: '22:00', end: '06:00', minStaff: 1 }
         ];
-        state.posts = [
-            { id: 1, name: 'SIC', shiftId: 1 }, { id: 2, name: 'TICKETING', shiftId: 1 },
-            { id: 3, name: 'Flight Manager', shiftId: 1 }, { id: 4, name: 'Flight Manager', shiftId: 2 },
-            { id: 5, name: 'Check-in', shiftId: 2 }, { id: 6, name: 'Gates', shiftId: 2 },
-            { id: 7, name: 'Baggage Claim', shiftId: 3 }
-        ];
+
+        // 👇 UPDATED SECTION START
+        state.posts = [];
+        const postNames = ["SIC", "TICKETING", "CTR", "CTR closing", "CTR/GATES", "ARRIVALS", "Flight Manager"];
+        let postIdCounter = 1;
+
+        // Loop through each shift and create the standard set of posts for it
+        state.shifts.forEach(shift => {
+            postNames.forEach(name => {
+                state.posts.push({
+                    id: postIdCounter++,
+                    name: name.trim(), // .trim() removes extra spaces
+                    shiftId: shift.id
+                });
+            });
+        });
+        // 👆 UPDATED SECTION END
     }
 
     // --- UTILITY FUNCTIONS ---
